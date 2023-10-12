@@ -1,0 +1,3 @@
+[submodule "borgbackup"]
+	path = borgbackup
+	url = https://github.com/borgbackup/borg.git
