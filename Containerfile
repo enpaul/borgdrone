@@ -3,8 +3,8 @@
 FROM docker.io/library/python:3.11 AS build-borg
 
 # Install borg build dependencies
-RUN apt update --yes
-RUN apt install --yes \
+RUN apt-get update --yes
+RUN apt-get install --yes --no-install-recommends \
   libacl1-dev \
   libacl1 \
   libssl-dev \
@@ -19,7 +19,8 @@ RUN python -m pip install \
   Cython==3.0.3 \
   pkgconfig==1.5.5 \
   --disable-pip-version-check \
-  --upgrade
+  --upgrade \
+  --no-cache-dir
 
 # Build borg dist wheel
 COPY . /source
@@ -27,7 +28,8 @@ WORKDIR /source/borgbackup
 RUN python -m pip wheel .[pyfuse3] \
   --wheel-dir /wheels \
   --prefer-binary \
-  --disable-pip-version-check
+  --disable-pip-version-check \
+  --no-cache-dir
 
 
 # ======================================================
@@ -55,9 +57,10 @@ RUN python -m pip wheel \
 # Stage 3: Final distribution image
 FROM docker.io/library/python:3.11-slim AS publish
 
-RUN apt update --yes && \
-  apt install openssh-client --yes && \
-  apt clean all && \
+RUN apt-get update --yes && \
+  apt-get install openssh-client --yes --no-install-recommends && \
+  apt-get clean all && \
+  rm --recursive --force /var/lib/apt/lists/* && \
   mkdir /repo /data /keys && \
   useradd borg --uid 1000 --home-dir /home/borg --create-home && \
   chown --recursive borg:borg /repo && \
@@ -67,6 +70,7 @@ RUN apt update --yes && \
 COPY --from=build-borg /wheels /wheels/borg
 COPY --from=build-drone /wheels /wheels/drone
 COPY --from=build-drone /requirements.txt /wheels/drone.txt
+# hadolint ignore=DL3013
 RUN python -m pip install borgbackup[pyfuse3] \
   --upgrade \
   --pre \
