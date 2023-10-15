@@ -31,8 +31,16 @@ RUN cd /source/borgbackup && python -m pip wheel .[pyfuse3] \
 
 FROM docker.io/library/python:3.11-slim AS final
 
-COPY --from=build /wheels /wheels
+RUN apt update --yes && \
+  apt install openssh-clients --yes && \
+  apt clean all && \
+  mkdir /repo /data && \
+  useradd borg --uid 1000 --gid 1000 && \
+  chown --recursive borg:borg /repo
 
+VOLUME ["/repo", "/data"]
+
+COPY --from=build /wheels /wheels
 RUN python -m pip install borgbackup[pyfuse3] \
   --upgrade \
   --pre \
@@ -42,4 +50,6 @@ RUN python -m pip install borgbackup[pyfuse3] \
   --disable-pip-version-check && \
   rm -rf /install/
 
-ENTRYPOINT ["/bin/bash"]
+USER 1000:1000
+
+ENTRYPOINT ["/usr/local/bin/borg"]
