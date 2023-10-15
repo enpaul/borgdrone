@@ -11,3 +11,7 @@ python = "^3.11"
 plumbum = "^1.8.2"
 
 
+[tool.poetry.group.dev.dependencies]
+black = "^23.9.1"
+reorder-python-imports = "^3.12.0"
+
