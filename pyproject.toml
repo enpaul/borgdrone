@@ -1,0 +1,13 @@
+[tool.poetry]
+name = "borgdrone"
+version = "0.0.0"
+description = "Scripting to support the BorgDrone container"
+authors = ["Ethan Paul <24588726+enpaul@users.noreply.github.com>"]
+license = "GNU-3"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+plumbum = "^1.8.2"
+
+

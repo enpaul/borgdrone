@@ -1,5 +1,8 @@
-FROM docker.io/library/python:3.11 AS build
+# ======================================================
+# Stage 1: Build BorgBackup wheel
+FROM docker.io/library/python:3.11 AS build-borg
 
+# Install borg build dependencies
 RUN apt update --yes
 RUN apt install --yes \
   libacl1-dev \
@@ -12,44 +15,79 @@ RUN apt install --yes \
   pkg-config \
   python3-pkgconfig \
   libfuse3-dev
-
 RUN python -m pip install \
   Cython==3.0.3 \
   pkgconfig==1.5.5 \
   --disable-pip-version-check \
   --upgrade
 
-# remember to add borg user to fuse group in final container
-
+# Build borg dist wheel
 COPY . /source
-
-RUN cd /source/borgbackup && python -m pip wheel .[pyfuse3] \
+WORKDIR /source/borgbackup
+RUN python -m pip wheel .[pyfuse3] \
   --wheel-dir /wheels \
   --prefer-binary \
   --disable-pip-version-check
 
 
-FROM docker.io/library/python:3.11-slim AS final
+# ======================================================
+# Stage 2: Build local repo resources
+FROM docker.io/library/python:3.11 as build-drone
+
+ENV POETRY_HOME /poetry
+RUN curl -o /install-poetry.py -sSL https://install.python-poetry.org
+RUN python /install-poetry.py --yes
+
+COPY . /source
+WORKDIR /source
+RUN ${POETRY_HOME}/bin/poetry export \
+  --format requirements.txt \
+  --output /requirements.txt \
+  --without-hashes
+RUN python -m pip wheel \
+  --wheel-dir /wheels \
+  --requirement /requirements.txt \
+  --disable-pip-version-check \
+  --no-cache-dir
+
+
+# ======================================================
+# Stage 3: Final distribution image
+FROM docker.io/library/python:3.11-slim AS publish
 
 RUN apt update --yes && \
-  apt install openssh-clients --yes && \
+  apt install openssh-client --yes && \
   apt clean all && \
-  mkdir /repo /data && \
-  useradd borg --uid 1000 --gid 1000 && \
-  chown --recursive borg:borg /repo
+  mkdir /repo /data /keys && \
+  useradd borg --uid 1000 --home-dir /home/borg --create-home && \
+  chown --recursive borg:borg /repo && \
+  chown --recursive borg:borg /keys && \
+  chmod --recursive 0600 /keys
 
-VOLUME ["/repo", "/data"]
-
-COPY --from=build /wheels /wheels
+COPY --from=build-borg /wheels /wheels/borg
+COPY --from=build-drone /wheels /wheels/drone
+COPY --from=build-drone /requirements.txt /wheels/drone.txt
 RUN python -m pip install borgbackup[pyfuse3] \
   --upgrade \
   --pre \
   --no-index \
   --no-cache-dir \
-  --find-links /wheels \
+  --find-links /wheels/borg \
   --disable-pip-version-check && \
-  rm -rf /install/
+  python -m pip install \
+  --requirement /wheels/drone.txt \
+  --upgrade \
+  --pre \
+  --no-index \
+  --no-cache-dir \
+  --find-links /wheels/drone \
+  --disable-pip-version-check && \
+  rm -rf /wheels/
+
+WORKDIR /repo
+
+VOLUME ["/repo", "/data", "/keys"]
 
 USER 1000:1000
 
-ENTRYPOINT ["/usr/local/bin/borg"]
+ENTRYPOINT ["/bin/bash"]
